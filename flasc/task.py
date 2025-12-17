@@ -3,8 +3,10 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 from flwr_datasets import FederatedDataset
 from flwr_datasets.partitioner import IidPartitioner
+
 from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, Normalize, ToTensor
 
@@ -37,12 +39,14 @@ pytorch_transforms = Compose([ToTensor(), Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 
 
 def apply_transforms(batch):
     """Apply transforms to the partition from FederatedDataset."""
+
     batch["img"] = [pytorch_transforms(img) for img in batch["img"]]
     return batch
 
 
 def load_data(partition_id: int, num_partitions: int):
     """Load partition CIFAR10 data."""
+
     # Only initialize `FederatedDataset` once
     global fds
     if fds is None:
@@ -63,6 +67,7 @@ def load_data(partition_id: int, num_partitions: int):
 
 def train(net, trainloader, epochs, lr, device):
     """Train the model on the training set."""
+
     net.to(device)  # move model to GPU if available
     criterion = torch.nn.CrossEntropyLoss().to(device)
     optimizer = torch.optim.Adam(net.parameters(), lr=lr)
@@ -83,6 +88,7 @@ def train(net, trainloader, epochs, lr, device):
 
 def test(net, testloader, device):
     """Validate the model on the test set."""
+
     net.to(device)
     criterion = torch.nn.CrossEntropyLoss()
     correct, loss = 0, 0.0
