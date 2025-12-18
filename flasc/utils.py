@@ -1,29 +1,31 @@
+from flwr.common import Array, ArrayRecord
+
 import torch
-from flwr.common import Array
-from collections import OrderedDict
 
 
-def concat_state_dict_list(state_dict_list):
-    idx_state_dict = OrderedDict()
+def pack_state_dicts(state_dicts: list[ArrayRecord]) -> ArrayRecord:
+    state_dicts_packed = ArrayRecord()
     i = 0
-    for state_dict in state_dict_list:
+    for state_dict in state_dicts:
         for key, value in state_dict.items():
-            idx_key = f"{i}.{key}"
-            idx_state_dict[idx_key] = Array.from_torch_tensor(value)
+            indexed_key = f"{i} {key}"
+            array = Array.from_torch_tensor(value)
+            state_dicts_packed[indexed_key] = array
         i += 1
 
-    return idx_state_dict
+    return state_dicts_packed
 
-def sep_idx_state_dict(state_dict_idx):
-    state_dict_list = []
-    for idx_key, array in state_dict_idx.items():
-        subs = idx_key.split(".")
-        idx = int(subs.pop(0))
-        key = ".".join(subs)
 
-        if len(state_dict_list) == idx:
-            state_dict_list.append(OrderedDict())
+def unpack_state_dicts(state_dicts_packed: ArrayRecord) -> list[ArrayRecord]:
+    state_dicts = []
+    for indexed_key, array in state_dicts_packed.items():
+        i_str, key = indexed_key.split(" ")
+        i = int(i_str)
 
-        state_dict_list[idx][key] = torch.from_numpy(array.numpy())
+        if len(state_dicts) == i:
+            state_dicts.append({})
 
-    return state_dict_list
+        state_dict = torch.from_numpy(array.numpy())
+        state_dicts[i][key] = state_dict
+
+    return state_dicts
