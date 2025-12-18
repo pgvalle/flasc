@@ -22,14 +22,8 @@ def main(grid: Grid, context: Context) -> None:
     lr: float = context.run_config["lr"]
     num_models: int = context.run_config["num-global-models"]
 
-    # Create a list of C models
-    list_arrays = []
-    for _ in range(num_models):
-        model = Net()
-        arrays = ArrayRecord(model.state_dict())
-        list_arrays.append(arrays)
-        
-    # pack models as if they were a single model (this is easier than keeping them separate)
+    # Create a list of global models and pack them (this is easier than keeping them separate)
+    list_arrays = [ArrayRecord(Net().state_dict()) for _ in range(num_models)]
     list_arrays_packed = pack_list_arrays(list_arrays)
 
     # Initialize FedAvg strategy
