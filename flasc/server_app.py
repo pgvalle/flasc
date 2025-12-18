@@ -20,23 +20,22 @@ def main(grid: Grid, context: Context) -> None:
     fraction_train: float = context.run_config["fraction-train"]
     num_rounds: int = context.run_config["num-server-rounds"]
     lr: float = context.run_config["lr"]
-    num_global_models: int = context.run_config["num-global-models"]
+    num_models: int = context.run_config["num-global-models"]
 
     # Create a list of C models
-    state_dict_list = [Net().state_dict() for _ in range(num_global_models)]
-    # index each model and concatenate as if they were a single model
-    state_dict_idx = concat_state_dict_list(state_dict_list)
-    # create array record of amalgamate
-    arrays = ArrayRecord(array_dict=state_dict_idx)
+    state_dicts = [Net().state_dict() for _ in range(num_models)]
+    # pack models as if they were a single model (this is easier than keeping them separate)
+    state_dicts_packed = pack_state_dicts(state_dicts)
+    # create array record of this amalgamate
+    arrays = ArrayRecord(state_dicts_packed)
 
     # Initialize FedAvg strategy
-    strategy = FLASC(fraction_train=fraction_train)
-
+    strategy = FLASC(num_models, fraction_train)
     # Start strategy, run FedAvg for `num_rounds`
     result = strategy.start(
         grid=grid,
         initial_arrays=arrays,
-        train_config=ConfigRecord({"lr": lr, "num-global-models": num_global_models}),
+        train_config=ConfigRecord({"lr": lr}),
         num_rounds=num_rounds,
     )
 
