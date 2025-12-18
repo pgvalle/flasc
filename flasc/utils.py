@@ -3,29 +3,27 @@ from flwr.common import Array, ArrayRecord
 import torch
 
 
-def pack_state_dicts(state_dicts: list[ArrayRecord]) -> ArrayRecord:
-    state_dicts_packed = ArrayRecord()
+def pack_list_arrays(list_arrays: list[ArrayRecord]) -> ArrayRecord:
+    list_arrays_packed = ArrayRecord()
     i = 0
-    for state_dict in state_dicts:
-        for key, value in state_dict.items():
+    for arrays in list_arrays:
+        for key, value in arrays.items():
             indexed_key = f"{i} {key}"
-            array = Array.from_torch_tensor(value)
-            state_dicts_packed[indexed_key] = array
+            list_arrays_packed[indexed_key] = value
         i += 1
 
-    return state_dicts_packed
+    return list_arrays_packed
 
 
-def unpack_state_dicts(state_dicts_packed: ArrayRecord) -> list[ArrayRecord]:
-    state_dicts = []
-    for indexed_key, array in state_dicts_packed.items():
+def unpack_list_arrays(list_arrays_packed: ArrayRecord) -> list[ArrayRecord]:
+    list_arrays = []
+    for indexed_key, value in list_arrays_packed.items():
         i_str, key = indexed_key.split(" ")
         i = int(i_str)
 
-        if len(state_dicts) == i:
-            state_dicts.append({})
+        while len(list_arrays) <= i:
+            list_arrays.append(ArrayRecord())
 
-        state_dict = torch.from_numpy(array.numpy())
-        state_dicts[i][key] = state_dict
+        list_arrays[i][key] = value
 
-    return state_dicts
+    return list_arrays
