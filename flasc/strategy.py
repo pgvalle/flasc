@@ -1,45 +1,52 @@
-from flwr.serverapp.strategy.fedavg import *
-import sys
+from flwr.serverapp.strategy import FedAvg
+from flwr.serverapp.strategy.strategy_utils import aggregate_arrayrecords
+from flwr.common import (
+    ArrayRecord,
+    MetricRecord,
+    RecordDict,
+    Array,
+    Message,
+    log,
+)
+
+from flasc.utils import pack_state_dicts
+
+from typing import Iterable
+
 
 def my_aggregate_arrayrecords(
-        records: list[RecordDict], weighting_metric_name: str
+        records: list[RecordDict],
+        weighting_metric_name: str,
+        num_global_models: int
 ) -> ArrayRecord:
     """Perform weighted aggregation all ArrayRecords using a specific key."""
-    # Retrieve weighting factor from MetricRecord
-    weights: list[float] = []
+
+    # Group RecordDicts to form the clusters
+    clusters = [[] for _ in range(num_global_models)]
     for record in records:
-        # Get the first (and only) MetricRecord in the record
-        metricrecord = next(iter(record.metric_records.values()))
-        # Because replies have been checked for consistency,
-        # we can safely cast the weighting factor to float
-        w = cast(float, metricrecord[weighting_metric_name])
-        weights.append(w)
+        config = next(iter(record.config_records.values()))
+        identities = config["identities"]
+        # add this client RecordDict to all clusters it belongs to
+        for i in identities:
+            clusters[i].append(record)
+        
+    # may cause bugs on record not being copied (reference)
+    # Do FedAvg on each cluster separately
+    state_dicts = []
+    for cluster in clusters:
+        state_dict = aggregate_arrayrecords(cluster, weighting_metric_name)
+        state_dicts.append(state_dict)
 
-    # Average
-    total_weight = sum(weights)
-    weight_factors = [w / total_weight for w in weights]
-
-    # Perform weighted aggregation
-    aggregated_np_arrays: dict[str, NDArray] = {}
-
-    for record, weight in zip(records, weight_factors, strict=True):
-        for record_item in record.array_records.values():
-            # aggregate in-place
-            for key, value in record_item.items():
-                if key not in aggregated_np_arrays:
-                    aggregated_np_arrays[key] = value.numpy() * weight
-                else:
-                    aggregated_np_arrays[key] += value.numpy() * weight
-
-    return ArrayRecord(
-            {k: Array(np.asarray(v)) for k, v in aggregated_np_arrays.items()}
-            )
+    # pack models and return them
+    return pack_state_dicts(state_dicts)
 
 
 class FLASC(FedAvg):
 
-    def __init__(self, fraction_train=1.0) -> None:
+    def __init__(self, num_models, fraction_train=1.0) -> None:
+        self.num_models = num_models
         super().__init__(fraction_train=fraction_train)
+
 
     def aggregate_train(
             self,
@@ -54,16 +61,16 @@ class FLASC(FedAvg):
         if valid_replies:
             reply_contents = [msg.content for msg in valid_replies]
 
-            #!
             # Aggregate ArrayRecords
             arrays = my_aggregate_arrayrecords(
-                    reply_contents,
-                    self.weighted_by_key,
+                reply_contents,
+                self.weighted_by_key,
+                self.num_models,
             )
 
-            # Aggregate MetricRecords
-            metrics = self.train_metrics_aggr_fn(
-                    reply_contents,
-                    self.weighted_by_key,
-                    )
-        return arrays, metrics
+            #! ignoring Aggregate MetricRecords for now
+            # metrics = self.train_metrics_aggr_fn(
+            #     reply_contents,
+            #     self.weighted_by_key,
+            # )
+        return arrays, MetricRecord()
