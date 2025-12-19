@@ -5,7 +5,6 @@ from flwr.app import ArrayRecord, ConfigRecord, Context
 from flwr.serverapp import Grid, ServerApp
 
 from flasc.task import Net
-from flasc.utils import *
 from flasc.strategy import FLASC
 
 # Create ServerApp
@@ -24,14 +23,14 @@ def main(grid: Grid, context: Context) -> None:
 
     # Create a list of global models and pack them (this is easier than keeping them separate)
     list_arrays = [ArrayRecord(Net().state_dict()) for _ in range(num_models)]
-    list_arrays_packed = pack_list_arrays(list_arrays)
+    packed = FLASC.pack_arrays_list(list_arrays)
 
     # Initialize FedAvg strategy
-    strategy = FLASC(num_models, fraction_train)
+    strategy = FLASC(num_models, fraction_train=fraction_train)
     # Start strategy, run FedAvg for `num_rounds`
     result = strategy.start(
         grid=grid,
-        initial_arrays=list_arrays_packed,
+        initial_arrays=packed,
         train_config=ConfigRecord({"lr": lr}),
         num_rounds=num_rounds,
     )
