@@ -124,6 +124,7 @@ class FLASC(FedAvg):
             )
 
             # Aggregate MetricRecords
+            #! TODO: different amount of identities for each client cause error here
             metrics = self.train_metrics_aggr_fn(
                 reply_contents,
                 self.weighted_by_key,
