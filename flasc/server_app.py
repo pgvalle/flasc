@@ -22,15 +22,18 @@ def main(grid: Grid, context: Context) -> None:
     num_models: int = context.run_config["num-global-models"]
 
     # Create a list of global models and pack them (this is easier than keeping them separate)
-    list_arrays = [ArrayRecord(Net().state_dict()) for _ in range(num_models)]
-    packed = FLASC.pack_arrays_list(list_arrays)
+    list_arrays = []
+    for _ in range(num_models):
+        model = Net()
+        state = model.state_dict()
+        list_arrays.append(ArrayRecord(torch_state_dict=state))
 
     # Initialize FedAvg strategy
     strategy = FLASC(num_models, fraction_train=fraction_train)
     # Start strategy, run FedAvg for `num_rounds`
     result = strategy.start(
         grid=grid,
-        initial_arrays=packed,
+        initial_list_arrays=list_arrays,
         train_config=ConfigRecord({"lr": lr}),
         num_rounds=num_rounds,
     )

@@ -35,26 +35,28 @@ DEVICE = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 app = ClientApp()
 
 
-def select_best_models(arrays_list, loader, thresh=0.9):
-    losses = []
+def calculate_metrics(arrays_list, loader):
+    metrics = []
     for arrays in arrays_list:
         model = Net()
         model.load_state_dict(arrays.to_torch_state_dict())
         model.to(DEVICE)
 
-        loss, _ = test_fn(model, loader, DEVICE)
-        losses.append(loss)
+        loss, acc = test_fn(model, loader, DEVICE)
+        metrics.append((loss, acc))
 
+    return metrics
+
+
+def select_best_models(metrics, thresh=0.9):
+    losses = [loss for loss, acc in metrics]
     maxl = max(losses)
     minl = min(losses)
     dl = maxl - minl
-    weights = None
+    weights = len(metrics) * [0]
 
     if dl == 0:
-        import random
-        i = random.randint(0, len(arrays_list) - 1)
-        weights = len(arrays_list) * [0]
-        weights[i] = 1
+        weights[i] = len(metrics) * [1]
     else:
         # weight[i] = 1 - normalized_loss[i]
         weights = [1 - (l - minl) / dl for l in losses]
@@ -82,11 +84,12 @@ def train(msg: Message, context: Context):
     arrays_list = FLASC.unpack_arrays(packed)
 
     # select the best models
-    weights, selected = select_best_models(arrays_list, evalloader, thresh=0.9)
+    metrics = calculate_metrics(arrays_list, evalloader)
+    weights, selection = select_best_models(metrics)
 
-    # fuse selected models weighed according to their loss
+    # fuse selection models weighed according to their loss
     fusion_np_arrays = {}
-    for i in selected:
+    for i in selection:
         arrays = arrays_list[i]
         weight = weights[i]
         for k, v in arrays.items():
@@ -116,7 +119,7 @@ def train(msg: Message, context: Context):
         ARRAYRECORD_KEY: fusion_arrays,
         METRICRECORD_KEY: MetricRecord({
             "train_loss": train_loss,
-            METRICRECORD_IDENTITIES_KEY: selected,
+            METRICRECORD_IDENTITIES_KEY: selection,
             METRICRECORD_WEIGHT_KEY: len(trainloader.dataset),
         })
     })
@@ -131,29 +134,23 @@ def evaluate(msg: Message, context: Context): #! modificar para treinar cada mod
     partition_id = context.node_config["partition-id"]
     num_partitions = context.node_config["num-partitions"]
     _, evalloader = load_data(partition_id, num_partitions)
-
     # load amalgamate of state_dicts and convert to list of state_dicts
     packed = msg.content[ARRAYRECORD_KEY]
     arrays_list = FLASC.unpack_arrays(packed)
 
     # select the best model
-    _, selected = select_best_models(arrays_list, evalloader, thresh=1)
-    i = selected[0]
-
-    # load it as a pytorch model
-    arrays = arrays_list[i]
-    model = Net()
-    model.load_state_dict(arrays.to_torch_state_dict())
-
-    # evaluate it
-    loss, acc = test_fn(model, evalloader, DEVICE)
+    _, evalloader = load_data(partition_id, num_partitions)
+    metrics = calculate_metrics(arrays_list, evalloader)
+    _, selection = select_best_models(metrics, thresh=1)
+    # get its metrics to send in message
+    loss, acc = metrics[selection[0]]
 
     # Construct and return reply Message
     content = RecordDict({
         METRICRECORD_KEY: MetricRecord({
             "eval_loss": loss,
             "eval_acc": acc,
-            "identity": i,
+            "identity": selection[0],
             METRICRECORD_WEIGHT_KEY: len(evalloader.dataset)
         })
     })
